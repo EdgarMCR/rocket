@@ -57,9 +57,9 @@ function main()
     flightPlan.thrustDirection[part,3] = 0.0 #phi
 
     startPosition = [rEarth,0.0, 0.0]
-    rocket = Body(24.0, 120.0, 1500.0, 0.1, flightPlan, startPosition)
+    rocket = Body(24.0, 120.0, 1600.0, 0.1, flightPlan, startPosition)
 
-    timestep= 0.1
+    timestep= 1.0
     time, x, y, z = runCalc(timestep, rocket)
 
     plt1 = Plots.plot(time, getR(x, y, z) - rEarth,
@@ -67,6 +67,7 @@ function main()
                     markersize = 2,
                     markeralpha = 0.6,
                     markercolor = :blue,
+                    markerstrokecolor = :blue,
                     label="Timestep = $(timestep)",
                     xlabel = "Time [s]",
                     ylabel = "Height [m]",
@@ -79,6 +80,7 @@ function main()
                     markersize = 2,
                     markeralpha = 0.6,
                     markercolor = :blue,
+                    markerstrokecolor = :blue,
                     label="Timestep = $(timestep)",
                     xlabel = "y [m]",
                     ylabel = "x [m]",
@@ -89,12 +91,13 @@ function main()
     # rocket.r = startPosition
     # time, x, y, z = runCalc(timestep, rocket)
 
-    Plots.plot!(plt2, y, x,
-                markershape = :circle,
-                markersize = 2,
-                markercolor = :yellow,
-                label="Earth surface",
-                label="Timestep = $(timestep)")
+    # Plots.plot!(plt2, y, x,
+    #             markershape = :circle,
+    #             markersize = 2,
+    #             markercolor = :yellow,
+    #             markerstrokecolor = :yellow,
+    #             label="Earth surface",
+    #             label="Timestep = $(timestep)")
 
     # plt = path3d(1, #xlim=(-25,25), ylim=(-25,25), zlim=(0,50),
     #             xlab = "x", ylab = "y", zlab = "z",
@@ -117,9 +120,10 @@ function main()
                 markershape = :hexagon,
                 markersize = 2,
                 markercolor = :red,
+                markerstrokecolor = :red,
                 label="Earth surface",
-                xlim = (minimum(y)-10^2, maximum(y)+10^2),
-                ylim = (minimum(x)-10^2, maximum(x)+10^2))
+                xlim = (minimum(y)-10^3, maximum(y)+10^3),
+                ylim = (minimum(x)-10^3, maximum(x)+10^3))
 
     Plots.display(plt2)
     Plots.savefig("X-Y_timestep=$(timestep).jpg")
@@ -157,6 +161,11 @@ function getRθφFromXYZ(x, y, z)
 end
 
 function getRDirection(r)
+    r, θ, φ = getRθφFromXYZ(r[1], r[2], r[3])
+    return getRDirection(r, θ, φ)
+end
+function getRDirection(r, θ, φ)
+    r, θ, φ = [cos.(θ)*sin.(φ), sin.(θ)*sin.(φ), cos.(φ)]
 end
 
 #r is x, y, z, returns theta direction
@@ -183,9 +192,9 @@ function calculateThurstDirection(time::Float64, r::Array{Float64, 1}, fp::Fligh
     ft= fp.fireTimes
     for i = 1:size(ft)[1]
       if ft[i, 1] <= time && ft[i, 2] > time
-        dirR = [1/sqrt(3), 1/sqrt(3), 1/sqrt(3)]
 
         r, θ, φ = getRθφFromXYZ(r[1], r[2], r[3])
+        dirR = getRDirection(r, θ, φ)
         dirθ = getθDirection(r, θ, φ)
         dirφ = getφDirection(r, θ, φ)
         # println("r, θ, φ = $(dirR), $(dirθ), $(dirφ) ")
@@ -203,7 +212,8 @@ end
 function getGravitationalForce(r, m1, m2)
     magr = getR(r)
     f = -G*m1*m2/magr^2
-    return [f/sqrt(3), f/sqrt(3), f/sqrt(3)]
+    dirR = getRDirection(r)
+    return f*dirR
 end
 
 function runCalc(δt::Float64, rocket::Body)
@@ -224,7 +234,7 @@ function runCalc(δt::Float64, rocket::Body)
     append!(zHist, rocket.r[3])
 
     tic()
-    while( getR(rocket.r) >= rEarth-1.0 && t<10000)
+    while( getR(rocket.r) >= rEarth-1.0 && t<5000)
 
         c += 1
         force = vcat(0.0, 0.0, 0.0) #Working in r, θ, φ basis now
@@ -243,7 +253,7 @@ function runCalc(δt::Float64, rocket::Body)
         end
 
         if c%10 == 0
-            print("c = $(c) (t=$(t) s): r=$(getR(rocket.r) - rEarth), ")
+            print("c = $(c) (t=$(t) s): h=$(getR(rocket.r) - rEarth), r=$(rocket.r)")
             print("force = $(force), fuel = $(rocket.fuelMass)")
             print("\n")
         end

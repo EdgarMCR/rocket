@@ -37,21 +37,21 @@ function main()
     flightPlan = FlightPlan(zeros(3,2), zeros(3,3))
     part=1 #go straight up
     flightPlan.fireTimes[part,1] = 0.0
-    flightPlan.fireTimes[part,2] = 300.0
+    flightPlan.fireTimes[part,2] = 100.0
     flightPlan.thrustDirection[part,1] = 1.0 #r
     flightPlan.thrustDirection[part,2] = 0.0 #theta
     flightPlan.thrustDirection[part,3] = 0.0 #phi
 
     part=2 #45 degree thrust
-    flightPlan.fireTimes[part,1] = 300.0
+    flightPlan.fireTimes[part,1] = 100.0
     flightPlan.fireTimes[part,2] = 700.0
     flightPlan.thrustDirection[part,1] = 1.0/sqrt(2.0) #r
     flightPlan.thrustDirection[part,2] = 1.0/sqrt(2.0) #theta
     flightPlan.thrustDirection[part,3] = 0.0 #phi
 
     part=3 #only in theta direction to gain orbital speed
-    flightPlan.fireTimes[part,1] = 1000.0
-    flightPlan.fireTimes[part,2] = 1040.0
+    flightPlan.fireTimes[part,1] = 1500.0
+    flightPlan.fireTimes[part,2] = 1600.0
     flightPlan.thrustDirection[part,1] = 0.0 #r
     flightPlan.thrustDirection[part,2] = 1.0 #theta
     flightPlan.thrustDirection[part,3] = 0.0 #phi
@@ -59,8 +59,9 @@ function main()
     startPosition = [rEarth,0.0, 0.0]
     rocket = Body(24.0, 120.0, 1600.0, 0.1, flightPlan, startPosition)
 
-    timestep= 1.0
-    time, x, y, z = runCalc(timestep, rocket)
+    timestep= 0.001
+    maxTime = 50000
+    time, x, y, z = runCalc(timestep, maxTime, rocket)
 
     plt1 = Plots.plot(time, getR(x, y, z) - rEarth,
                     markershape = :hexagon,
@@ -155,7 +156,7 @@ function getR(x, y, z)
 end
 function getRθφFromXYZ(x, y, z)
   r = sqrt.(x.^2 + y.^2 + z.^2)
-  θ = atan.(y./x)
+  θ = atan2.(y, x)
   φ = acos.(z./r)
   return r, θ, φ
 end
@@ -189,9 +190,13 @@ end
 function calculateThurstDirection(time::Float64, r::Array{Float64, 1}, fp::FlightPlan)
     #Check ascent profile
     dir = [0, 0, 0]
+    engineOn = false
     ft= fp.fireTimes
     for i = 1:size(ft)[1]
       if ft[i, 1] <= time && ft[i, 2] > time
+        # if time%10 == 0
+        #     println("\n time = $(time), fireTimes = $(ft), i=$(i)")
+        # end
 
         r, θ, φ = getRθφFromXYZ(r[1], r[2], r[3])
         dirR = getRDirection(r, θ, φ)
@@ -203,10 +208,11 @@ function calculateThurstDirection(time::Float64, r::Array{Float64, 1}, fp::Fligh
                 dirθ*fp.thrustDirection[i, 2] +
                 dirφ*fp.thrustDirection[i, 3]
         # println("dir = $(dir) ")
+        engineOn = true
         break
       end
     end
-    return dir
+    return engineOn, dir
 end
 
 function getGravitationalForce(r, m1, m2)
@@ -216,7 +222,7 @@ function getGravitationalForce(r, m1, m2)
     return f*dirR
 end
 
-function runCalc(δt::Float64, rocket::Body)
+function runCalc(δt::Float64, maxTime::Float64, rocket::Body)
     t=0.0
     v=0.0
 
@@ -234,15 +240,17 @@ function runCalc(δt::Float64, rocket::Body)
     append!(zHist, rocket.r[3])
 
     tic()
-    while( getR(rocket.r) >= rEarth-1.0 && t<5000)
+    while( getR(rocket.r) >= rEarth-1.0 && t<maxTime)
 
         c += 1
         force = vcat(0.0, 0.0, 0.0) #Working in r, θ, φ basis now
         if rocket.fuelMass > 0.0
-            dir = calculateThurstDirection(t, rocket.r, rocket.flightPlan)
+            engineOn, dir = calculateThurstDirection(t, rocket.r, rocket.flightPlan)
 
-            force = rocket.thrust * dir
-            rocket.fuelMass = rocket.fuelMass - rocket.fuelPerSecond*δt
+            if engineOn
+                force = rocket.thrust * dir
+                rocket.fuelMass = rocket.fuelMass - rocket.fuelPerSecond*δt
+            end
         end
         # print("force = $(force), ")
         forceG = getGravitationalForce(rocket.r, mEarth, getMass(rocket))
@@ -252,7 +260,7 @@ function runCalc(δt::Float64, rocket::Body)
             force = vcat(0.0, 0.0, 0.0)
         end
 
-        if c%10 == 0
+        if c%1000 == 0
             print("c = $(c) (t=$(t) s): h=$(getR(rocket.r) - rEarth), r=$(rocket.r)")
             print("force = $(force), fuel = $(rocket.fuelMass)")
             print("\n")
